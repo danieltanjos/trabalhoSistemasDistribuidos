@@ -1,0 +1,123 @@
+RESUMO TECNICO DO PROJETO
+
+Tema:
+Sistema distribuido simples de corretora de valores, dividido em 3 modulos
+conforme o enunciado: gateway TCP em Python, core em Java com RMI e servico
+de custodia em Python com gRPC.
+
+1. Arquitetura
+
+O projeto foi separado em tres partes:
+
+- Modulo 1: Gateway de corretoras
+  Implementado em Python com sockets TCP e multithreading.
+  Ele recebe conexoes de varias corretoras ao mesmo tempo e encaminha as
+  ordens para o core da corretora.
+
+- Modulo 2: Core da corretora
+  Implementado em Java.
+  Ele centraliza o livro de ofertas, faz o casamento entre ordens de compra e
+  venda e expõe um servico RMI para consulta remota das metricas.
+
+- Modulo 3: Custodia
+  Implementado em Python com gRPC.
+  Ele valida se o investidor possui saldo suficiente para comprar ou vender e
+  envia atualizacoes de saldo para o core via streaming.
+
+2. Comunicacao entre modulos
+
+- Gateway -> Core:
+  Socket TCP.
+  Cada ordem chega em formato texto, uma por linha.
+
+- Core -> Painel:
+  Java RMI.
+  O painel consulta ultima cotacao, volume negociado e resumo do mercado.
+
+- Core -> Custodia:
+  gRPC.
+  O core chama a custodia para validar ordens e liquidar operacoes.
+
+- Custodia -> Core:
+  gRPC streaming.
+  Depois da liquidacao, a custodia envia mensagens de atualizacao de saldo.
+
+3. Fluxo de execucao
+
+1. Uma corretora simulada abre conexao com o gateway.
+2. O gateway trata essa conexao em uma thread separada.
+3. Cada ordem recebida e encaminhada ao core Java.
+4. O core consulta a custodia antes de aceitar a ordem.
+5. Se a ordem for valida, ela entra no livro de ofertas.
+6. Se houver preco compativel, o core executa o casamento.
+7. A custodia liquida a operacao e devolve atualizacoes por streaming.
+8. O painel RMI pode consultar as metricas sem interromper o processamento.
+
+4. Estrutura do livro de ofertas
+
+O core mantem duas estruturas em memoria por ativo:
+
+- lista de compras
+- lista de vendas
+
+Para simplificar o projeto, foi usada uma logica minima:
+
+- a melhor compra e a ordem com maior preco
+- a melhor venda e a ordem com menor preco
+- ocorre negocio quando preco_compra >= preco_venda
+- a quantidade negociada e o menor valor entre compra e venda
+
+Depois de cada negocio:
+
+- o volume negociado do ativo e atualizado
+- a ultima cotacao do ativo e atualizada
+- a quantidade restante das ordens e reduzida
+- ordens zeradas sao removidas
+
+5. Concorrencia
+
+O requisito de paralelismo foi atendido assim:
+
+- no gateway, cada corretora conectada e tratada em paralelo com thread
+- no core, o processamento do livro de ofertas foi protegido com sincronizacao
+  para evitar corrida ao acessar e modificar as ordens
+
+Isso garante uma implementacao simples, mas segura o suficiente para o estudo.
+
+6. Tratamento de indisponibilidade
+
+Se o servico de custodia falhar:
+
+- o core marca o sistema como suspenso
+- novas negociacoes deixam de ser confirmadas
+
+Isso atende a observacao do enunciado de suspender negociacoes quando a
+custodia estiver indisponivel.
+
+7. Simplificacoes adotadas
+
+Como o trabalho e apenas um estudo, a implementacao foi mantida propositalmente
+simples:
+
+- nao ha banco de dados
+- o livro de ofertas fica somente em memoria
+- as ordens usam formato texto simples no socket
+- nao existe autenticacao
+- o simulador gera ordens aleatorias
+- o sistema nao persiste historico em disco
+
+Essas escolhas reduzem o tamanho do projeto e deixam o funcionamento mais
+facil de entender e demonstrar.
+
+8. Resultado
+
+O projeto demonstra, de forma pequena e funcional, o uso combinado de:
+
+- sockets TCP
+- multithreading
+- Java RMI
+- gRPC
+- streaming
+- sincronizacao basica para ambiente concorrente
+
+Assim, ele atende os requisitos principais do PDF com uma implementacao enxuta.

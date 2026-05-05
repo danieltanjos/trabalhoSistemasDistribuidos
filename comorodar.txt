@@ -1,0 +1,82 @@
+COMO RODAR O PROJETO
+
+Abrir o terminal na pasta do projeto.
+
+1. Instalar as dependencias Python
+
+Comando:
+
+python3 -m pip install --target python/.deps grpcio grpcio-tools protobuf
+
+
+2. Gerar os arquivos do gRPC em Python
+
+Comandos:
+
+mkdir -p python/generated
+PYTHONPATH=python/.deps python3 -m grpc_tools.protoc -Iproto --python_out=python/generated --grpc_python_out=python/generated proto/custodia.proto
+
+
+3. Baixar o Maven local
+
+Comandos:
+
+curl -L https://archive.apache.org/dist/maven/maven-3/3.9.11/binaries/apache-maven-3.9.11-bin.tar.gz -o /tmp/apache-maven-3.9.11-bin.tar.gz
+tar -xzf /tmp/apache-maven-3.9.11-bin.tar.gz -C /tmp
+
+
+4. Compilar o modulo Java
+
+Comando:
+
+/tmp/apache-maven-3.9.11/bin/mvn -Dmaven.repo.local=/tmp/m2repo -f java-core/pom.xml compile
+
+
+5. Montar o classpath do Java
+
+Comando:
+
+export JAVA_CORE_CP="java-core/target/classes:$(find /tmp/m2repo -name '*.jar' | tr '\n' ':')"
+
+
+6. Rodar os modulos
+
+Abrir 5 terminais separados.
+
+Terminal 1: Custodia
+
+PYTHONPATH=python/.deps:python/generated python3 python/modulo3/custodia_server.py
+
+
+Terminal 2: Core Java
+
+java -cp "$JAVA_CORE_CP" br.senai.corretora.BrokerServerMain
+
+
+Terminal 3: Gateway
+
+python3 python/modulo1/gateway_server.py
+
+
+Terminal 4: Simulador de corretoras
+
+python3 python/modulo1/simulador_corretoras.py
+
+
+Terminal 5: Painel RMI
+
+java -cp "$JAVA_CORE_CP" br.senai.corretora.MonitoringPanelMain
+
+
+7. O que deve aparecer
+
+- No gateway: mensagens dizendo que as corretoras conectaram e ordens foram encaminhadas
+- No core: mensagens de ordens recebidas
+- Na custodia: broker inscrito no streaming
+- No painel: resumo do mercado
+
+
+8. Observacao
+
+Se fechar o terminal, o processo daquele modulo para.
+Se quiser rodar de novo, normalmente basta subir os 5 terminais novamente.
