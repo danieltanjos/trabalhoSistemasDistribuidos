@@ -2,15 +2,15 @@ RESUMO TECNICO DO PROJETO
 
 Tema:
 Sistema distribuido simples de corretora de valores, dividido em 3 modulos
-conforme o enunciado: gateway TCP em Python, core em Java com RMI e servico
-de custodia em Python com gRPC.
+conforme o enunciado, mas implementado de forma enxuta somente em Java:
+gateway TCP, core com RMI e servico de custodia com gRPC.
 
 1. Arquitetura
 
 O projeto foi separado em tres partes:
 
 - Modulo 1: Gateway de corretoras
-  Implementado em Python com sockets TCP e multithreading.
+  Implementado em Java com sockets TCP e multithreading.
   Ele recebe conexoes de varias corretoras ao mesmo tempo e encaminha as
   ordens para o core da corretora.
 
@@ -20,7 +20,7 @@ O projeto foi separado em tres partes:
   venda e expõe um servico RMI para consulta remota das metricas.
 
 - Modulo 3: Custodia
-  Implementado em Python com gRPC.
+  Implementado em Java com gRPC.
   Ele valida se o investidor possui saldo suficiente para comprar ou vender e
   envia atualizacoes de saldo para o core via streaming.
 
@@ -114,7 +114,7 @@ facil de entender e demonstrar.
 O projeto demonstra, de forma pequena e funcional, o uso combinado de:
 
 - sockets TCP
-- multithreading
+- multithreading basico
 - Java RMI
 - gRPC
 - streaming

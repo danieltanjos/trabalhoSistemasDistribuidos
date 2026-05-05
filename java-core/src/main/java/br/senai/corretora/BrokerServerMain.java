@@ -30,9 +30,16 @@ public class BrokerServerMain {
     private static final BrokerState STATE = new BrokerState();
 
     public static void main(String[] args) throws Exception {
+        startServer();
+    }
+
+    public static void startServer() throws Exception {
         STATE.startCustodyStream();
 
-        LocateRegistry.createRegistry(1099);
+        try {
+            LocateRegistry.createRegistry(1099);
+        } catch (RemoteException ignored) {
+        }
         Naming.rebind("rmi://localhost/MonitoringService", new MonitoringRemote());
         System.out.println("[core] RMI pronto");
 
@@ -94,7 +101,12 @@ public class BrokerServerMain {
 
         synchronized void process(String line) {
             System.out.println("[core] ordem recebida: " + line);
-            Order order = Order.parse(line);
+            Order order;
+            try {
+                order = Order.parse(line);
+            } catch (Exception exc) {
+                return;
+            }
             if (order == null) {
                 return;
             }
