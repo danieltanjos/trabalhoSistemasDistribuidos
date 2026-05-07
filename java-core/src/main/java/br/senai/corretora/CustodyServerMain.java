@@ -42,11 +42,27 @@ public class CustodyServerMain {
             cash.put("carlos", 10000.0);
             cash.put("maria", 10000.0);
             cash.put("ana", 10000.0);
+            cash.put("bruno", 10000.0);
+            cash.put("lara", 10000.0);
+            cash.put("sofia", 10000.0);
+            cash.put("diego", 10000.0);
+            cash.put("carla", 10000.0);
+            cash.put("gustavo", 10000.0);
+            cash.put("renato", 10000.0);
+            cash.put("paula", 10000.0);
+            cash.put("marcos", 10000.0);
+            cash.put("bianca", 10000.0);
+            cash.put("heitor", 10000.0);
 
             setPosition("maria", "PETR4", 20);
             setPosition("ana", "VALE3", 20);
             setPosition("maria", "BTC", 2);
             setPosition("ana", "ETH", 3);
+            setPosition("paula", "PETR4", 10);
+            setPosition("renato", "VALE3", 10);
+            setPosition("marcos", "BTC", 2);
+            setPosition("bianca", "VALE3", 8);
+            setPosition("heitor", "ETH", 2);
         }
 
         @Override
