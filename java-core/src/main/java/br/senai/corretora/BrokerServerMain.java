@@ -3,6 +3,7 @@ package br.senai.corretora;
 import br.senai.custodia.grpc.AssinaturaBrokerRequest;
 import br.senai.custodia.grpc.CustodiaServiceGrpc;
 import br.senai.custodia.grpc.LiquidacaoRequest;
+import br.senai.custodia.grpc.LiquidacaoResponse;
 import br.senai.custodia.grpc.SaldoUpdate;
 import br.senai.custodia.grpc.ValidarOrdemRequest;
 import io.grpc.ManagedChannel;
@@ -24,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class BrokerServerMain {
     private static final int TCP_PORT = 5100;
@@ -71,20 +73,17 @@ public class BrokerServerMain {
 
         @Override
         public double consultarUltimaCotacao(String ativo) {
-            return STATE.lastPrice.getOrDefault(ativo, 0.0);
+            return STATE.getLastPrice(ativo);
         }
 
         @Override
         public long consultarVolumeNegociado(String ativo) {
-            return STATE.volume.getOrDefault(ativo, 0L);
+            return STATE.getVolume(ativo);
         }
 
         @Override
         public String consultarResumoMercado() {
-            return "suspenso=" + STATE.suspended +
-                    ", ativos=" + STATE.lastPrice +
-                    ", volume=" + STATE.volume +
-                    ", negocios=" + STATE.trades;
+            return STATE.getMarketSummary();
         }
     }
 
@@ -96,11 +95,16 @@ public class BrokerServerMain {
         private final Map<String, List<Order>> sells = new HashMap<>();
         private final Map<String, Double> lastPrice = new HashMap<>();
         private final Map<String, Long> volume = new HashMap<>();
+        private final AtomicLong sequence = new AtomicLong();
         private boolean suspended = false;
         private long trades = 0;
 
         synchronized void process(String line) {
             System.out.println("[core] ordem recebida: " + line);
+            if (suspended) {
+                System.out.println("[core] negociacoes suspensas, ordem descartada");
+                return;
+            }
             Order order;
             try {
                 order = Order.parse(line);
@@ -110,6 +114,7 @@ public class BrokerServerMain {
             if (order == null) {
                 return;
             }
+            order.sequence = sequence.incrementAndGet();
 
             try {
                 var validation = custody.validarOrdem(ValidarOrdemRequest.newBuilder()
@@ -152,13 +157,18 @@ public class BrokerServerMain {
                 double price = sell.price;
 
                 try {
-                    custody.liquidarOperacao(LiquidacaoRequest.newBuilder()
+                    LiquidacaoResponse response = custody.liquidarOperacao(LiquidacaoRequest.newBuilder()
                             .setComprador(buy.investor)
                             .setVendedor(sell.investor)
                             .setAtivo(symbol)
                             .setPreco(price)
                             .setQuantidade(qty)
                             .build());
+                    if (!response.getSucesso()) {
+                        suspended = true;
+                        System.out.println("[core] liquidacao rejeitada, negociacoes suspensas");
+                        return;
+                    }
                 } catch (StatusRuntimeException exc) {
                     suspended = true;
                     System.out.println("[core] falha na liquidacao, negociacoes suspensas");
@@ -185,7 +195,9 @@ public class BrokerServerMain {
         private Order bestBuy(List<Order> orders) {
             Order best = null;
             for (Order order : orders) {
-                if (best == null || order.price > best.price) {
+                if (best == null
+                        || order.price > best.price
+                        || (order.price == best.price && order.sequence < best.sequence)) {
                     best = order;
                 }
             }
@@ -195,11 +207,28 @@ public class BrokerServerMain {
         private Order bestSell(List<Order> orders) {
             Order best = null;
             for (Order order : orders) {
-                if (best == null || order.price < best.price) {
+                if (best == null
+                        || order.price < best.price
+                        || (order.price == best.price && order.sequence < best.sequence)) {
                     best = order;
                 }
             }
             return best;
+        }
+
+        synchronized double getLastPrice(String ativo) {
+            return lastPrice.getOrDefault(ativo, 0.0);
+        }
+
+        synchronized long getVolume(String ativo) {
+            return volume.getOrDefault(ativo, 0L);
+        }
+
+        synchronized String getMarketSummary() {
+            return "suspenso=" + suspended +
+                    ", ativos=" + new HashMap<>(lastPrice) +
+                    ", volume=" + new HashMap<>(volume) +
+                    ", negocios=" + trades;
         }
 
         private void startCustodyStream() {
@@ -233,6 +262,7 @@ public class BrokerServerMain {
         private final String symbol;
         private final String side;
         private final double price;
+        private long sequence;
         private int quantity;
 
         private Order(String investor, String symbol, String side, double price, int quantity) {
