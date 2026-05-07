@@ -157,6 +157,26 @@ public class BrokerServerMain {
                 double price = sell.price;
 
                 try {
+                    var buyerValidation = custody.validarOrdem(ValidarOrdemRequest.newBuilder()
+                            .setInvestidor(buy.investor)
+                            .setAtivo(symbol)
+                            .setLado("BUY")
+                            .setPreco(price)
+                            .setQuantidade(qty)
+                            .build());
+                    var sellerValidation = custody.validarOrdem(ValidarOrdemRequest.newBuilder()
+                            .setInvestidor(sell.investor)
+                            .setAtivo(symbol)
+                            .setLado("SELL")
+                            .setPreco(price)
+                            .setQuantidade(qty)
+                            .build());
+                    if (!buyerValidation.getAprovado() || !sellerValidation.getAprovado()) {
+                        suspended = true;
+                        System.out.println("[core] validacao pre-liquidacao rejeitada, negociacoes suspensas");
+                        return;
+                    }
+
                     LiquidacaoResponse response = custody.liquidarOperacao(LiquidacaoRequest.newBuilder()
                             .setComprador(buy.investor)
                             .setVendedor(sell.investor)

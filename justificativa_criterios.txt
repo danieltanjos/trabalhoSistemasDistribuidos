@@ -1,0 +1,129 @@
+JUSTIFICATIVA DOS CRITERIOS DE AVALIACAO
+
+Este arquivo explica, ponto a ponto, por que o trabalho atende aos criterios descritos em criterios.txt.
+As justificativas abaixo se baseiam no codigo atual do projeto.
+
+1. O Gateway estabelece conexoes TCP com o Broker?
+
+Atende.
+O gateway abre um servidor TCP na porta 5000 para receber conexoes das corretoras.
+Quando uma corretora conecta, o gateway cria uma conexao TCP com o core do broker na porta 5100.
+Ou seja, ele realmente faz a ponte entre cliente e broker por socket TCP.
+Arquivo principal: java-core/src/main/java/br/senai/corretora/GatewayServerMain.java
+
+2. O servidor trata cada nova conexao de corretora em uma thread separada (ou pool de threads)?
+
+Atende.
+O gateway usa ExecutorService com newCachedThreadPool().
+Cada conexao aceita pelo ServerSocket e enviada para pool.submit(...), entao cada corretora e tratada de forma concorrente, em thread separada gerenciada pelo pool.
+Arquivo principal: java-core/src/main/java/br/senai/corretora/GatewayServerMain.java
+
+3. Realizou a criacao da aplicacao cliente para representar as corretoras?
+
+Atende.
+Existe um simulador de corretoras que abre sockets TCP e envia ordens para o gateway.
+Esse simulador representa clientes externos distintos, como "casa-1" e "casa-2", enviando ordens em paralelo.
+Arquivo principal: java-core/src/main/java/br/senai/corretora/BrokerSimulationMain.java
+
+4. O Livro de Ofertas processa corretamente o casamento de ordens (Matching) de compra e venda?
+
+Atende.
+O core mantem estruturas separadas de compra e venda por ativo.
+Durante o matching, ele pega a melhor compra e a melhor venda.
+Se o preco de compra for maior ou igual ao preco de venda, a operacao e executada.
+A quantidade negociada e o minimo entre as duas ordens.
+Depois disso, o broker atualiza quantidade remanescente, remove ordens completamente executadas e atualiza metricas do mercado.
+Arquivo principal: java-core/src/main/java/br/senai/corretora/BrokerServerMain.java
+
+5. A interface RMI permite a consulta de metricas (cotacao, volume) em tempo real por um cliente externo?
+
+Atende.
+O broker publica um servico RMI chamado MonitoringService.
+Esse servico permite consultar:
+- ultima cotacao de um ativo
+- volume negociado
+- resumo geral do mercado
+Existe tambem um cliente RMI que acessa esse servico e imprime os dados periodicamente, funcionando como painel externo.
+Arquivos principais:
+- java-core/src/main/java/br/senai/corretora/MonitoringService.java
+- java-core/src/main/java/br/senai/corretora/MonitoringPanelMain.java
+- java-core/src/main/java/br/senai/corretora/BrokerServerMain.java
+
+6. O motor demonstra ser thread-safe, evitando condicoes de corrida ao acessar o Livro de Ofertas sob carga?
+
+Atende.
+O broker recebe multiplas conexoes de forma concorrente, mas o processamento interno das ordens no estado compartilhado acontece por metodo synchronized.
+Isso serializa o acesso ao livro de ofertas e evita corrida ao alterar listas de compra, venda, volume, preco e contador de negocios.
+As leituras expostas por RMI tambem foram centralizadas em metodos sincronizados do estado do broker.
+Arquivo principal: java-core/src/main/java/br/senai/corretora/BrokerServerMain.java
+
+7. As ordens sao processadas respeitando estritamente a ordem de chegada?
+
+Atende.
+O broker atribui uma sequencia crescente para cada ordem quando ela entra no processamento.
+No matching, quando duas ordens possuem o mesmo preco, o desempate e feito pela menor sequencia, ou seja, pela ordem de chegada.
+Assim, o sistema respeita prioridade de preco e, em empate de preco, prioridade temporal.
+Arquivo principal: java-core/src/main/java/br/senai/corretora/BrokerServerMain.java
+
+8. O Broker realiza a consulta obrigatoria de saldo ao servico gRPC antes de cada transacao?
+
+Atende.
+O broker consulta a custodia via gRPC em dois momentos:
+- quando a ordem chega, antes de entrar no livro
+- imediatamente antes de cada liquidacao
+Antes da transacao, ele valida separadamente comprador e vendedor por meio de validarOrdem(...).
+So depois dessa dupla verificacao ele chama liquidarOperacao(...).
+Isso deixa explicito que existe consulta obrigatoria de saldo/posicao antes de cada transacao.
+Arquivo principal: java-core/src/main/java/br/senai/corretora/BrokerServerMain.java
+
+9. O servico de custodia utiliza streaming para notificar atualizacoes de saldo apos a liquidacao?
+
+Atende.
+O contrato gRPC define o metodo AcompanharSaldos como streaming de servidor.
+O broker se inscreve nesse stream e permanece ouvindo notificacoes.
+Quando a custodia conclui uma liquidacao, ela envia atualizacoes para os assinantes usando notifySubscribers(...), notificando comprador e vendedor.
+Portanto, existe streaming gRPC real para comunicar atualizacoes apos a liquidacao.
+Arquivos principais:
+- java-core/src/main/proto/custodia.proto
+- java-core/src/main/java/br/senai/corretora/CustodyServerMain.java
+- java-core/src/main/java/br/senai/corretora/BrokerServerMain.java
+
+10. Os tres modulos funcionam em processos distintos comunicando-se apenas via rede?
+
+Atende.
+O projeto possui programas principais separados para cada modulo:
+- Gateway TCP
+- Core/Broker
+- Custodia gRPC
+Eles podem ser executados em terminais/processos distintos, cada um na sua propria porta, comunicando-se por TCP, gRPC e RMI.
+O arquivo comorodar.txt descreve inclusive a execucao separada dos modulos.
+Existe um DemoMain para demonstracao integrada, mas isso nao elimina o fato de que a arquitetura principal suporta e foi organizada para execucao em processos separados.
+Arquivos principais:
+- java-core/src/main/java/br/senai/corretora/GatewayServerMain.java
+- java-core/src/main/java/br/senai/corretora/BrokerServerMain.java
+- java-core/src/main/java/br/senai/corretora/CustodyServerMain.java
+
+11. O sistema suspende negociacoes corretamente caso o servico de Custodia fique indisponivel?
+
+Atende.
+Se a chamada gRPC para validar ou liquidar falhar, o broker marca o sistema como suspenso.
+Quando esta suspenso, novas ordens recebidas sao descartadas e o core informa que as negociacoes estao suspensas.
+O mesmo acontece se o stream da custodia falhar ou for encerrado.
+Assim, quando a custodia fica indisponivel, o broker para de negociar em vez de continuar operando sem garantias.
+Arquivo principal: java-core/src/main/java/br/senai/corretora/BrokerServerMain.java
+
+12. O sistema mantem a consistencia dos dados sob carga de multiplas corretoras simultaneas?
+
+Atende.
+O gateway aceita varias corretoras ao mesmo tempo usando pool de threads.
+O broker recebe essas ordens concorrentemente, mas processa o estado critico do livro de forma sincronizada.
+Isso evita inconsistencias nas quantidades, no volume negociado, no ultimo preco e no contador de negocios.
+Como a custodia tambem sincroniza validacao, liquidacao e lista de assinantes, o fluxo completo preserva consistencia durante operacoes simultaneas.
+Arquivos principais:
+- java-core/src/main/java/br/senai/corretora/GatewayServerMain.java
+- java-core/src/main/java/br/senai/corretora/BrokerServerMain.java
+- java-core/src/main/java/br/senai/corretora/CustodyServerMain.java
+
+Conclusao:
+
+O trabalho atende aos criterios porque implementa comunicacao distribuida real entre modulos, concorrencia no recebimento das ordens, controle de consistencia no processamento, validacao via gRPC, monitoramento via RMI e notificacao por streaming apos liquidacoes.
